@@ -188,3 +188,89 @@ export async function getHistoricalMeters(
 
   return results;
 }
+
+// Aggregate multiple SentimentData entries into a single aggregated result
+export function aggregateSentimentData(
+  dataPoints: SentimentData[],
+  start: Date,
+  end: Date
+): SentimentData | null {
+  if (dataPoints.length === 0) {
+    return null;
+  }
+
+  let totalMessageCount = 0;
+  const sentimentSums = {
+    happiness: 0,
+    sadness: 0,
+    anger: 0,
+    fear: 0,
+    surprise: 0,
+    disgust: 0,
+  };
+  const conceptCounts: { [concept: string]: number } = {};
+
+  for (const data of dataPoints) {
+    totalMessageCount += data.messageCount;
+
+    // Weight sentiment averages by message count
+    sentimentSums.happiness += data.happinessAvg * data.messageCount;
+    sentimentSums.sadness += data.sadnessAvg * data.messageCount;
+    sentimentSums.anger += data.angerAvg * data.messageCount;
+    sentimentSums.fear += data.fearAvg * data.messageCount;
+    sentimentSums.surprise += data.surpriseAvg * data.messageCount;
+    sentimentSums.disgust += data.disgustAvg * data.messageCount;
+
+    // Aggregate concepts
+    if (data.topConcepts) {
+      for (const [concept, count] of Object.entries(data.topConcepts)) {
+        conceptCounts[concept] = (conceptCounts[concept] || 0) + count;
+      }
+    }
+  }
+
+  // Calculate weighted averages
+  const avgSentiments = {
+    happiness: sentimentSums.happiness / totalMessageCount,
+    sadness: sentimentSums.sadness / totalMessageCount,
+    anger: sentimentSums.anger / totalMessageCount,
+    fear: sentimentSums.fear / totalMessageCount,
+    surprise: sentimentSums.surprise / totalMessageCount,
+    disgust: sentimentSums.disgust / totalMessageCount,
+  };
+
+  // Get top 200 concepts
+  const sortedConcepts = Object.entries(conceptCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 200);
+
+  const top200Concepts: { [concept: string]: number } = {};
+  for (const [concept, count] of sortedConcepts) {
+    top200Concepts[concept] = count;
+  }
+
+  // Use the midpoint of the range as the timestamp
+  const midpoint = new Date((start.getTime() + end.getTime()) / 2);
+
+  return {
+    timestamp: midpoint.toISOString(),
+    messageCount: totalMessageCount,
+    happinessAvg: avgSentiments.happiness,
+    sadnessAvg: avgSentiments.sadness,
+    angerAvg: avgSentiments.anger,
+    fearAvg: avgSentiments.fear,
+    surpriseAvg: avgSentiments.surprise,
+    disgustAvg: avgSentiments.disgust,
+    topConcepts: top200Concepts,
+  };
+}
+
+// Retrieve aggregated data for a time range
+export async function getAggregatedMeters(
+  kv: KVNamespace,
+  start: Date,
+  end: Date
+): Promise<SentimentData | null> {
+  const dataPoints = await getHistoricalMeters(kv, start, end);
+  return aggregateSentimentData(dataPoints, start, end);
+}

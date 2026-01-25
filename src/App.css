@@ -24,16 +24,27 @@
 .word-cloud-section {
   flex: 1;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   border-bottom: 2px solid #333;
   overflow: hidden;
+  padding-top: 0.5rem;
+}
+
+.word-cloud-header {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .word-cloud-container {
   width: 100%;
-  height: 100%;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -48,11 +59,95 @@
   margin: 0;
 }
 
+.word-cloud-loading {
+  color: #888;
+  font-size: 1.2rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.chart-section {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 2rem 2rem;
+}
+
+.timeframe-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.timeframe-display {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  margin-right: auto;
+}
+
+.timeframe-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.timeframe-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.timeframe-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.timeframe-btn.active {
+  background: rgba(199, 73, 0, 0.6);
+  border-color: rgb(199, 73, 0);
+  color: white;
+}
+
+.timeframe-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.nav-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .line-chart-container {
   flex: 0 0 auto;
-  height: 500px;
+  height: 450px;
   overflow: hidden;
-  padding: 2rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,7 +156,13 @@
 .line-chart {
   width: 100%;
   height: 100%;
-  max-height: 500px;
+  max-height: 450px;
+}
+
+.chart-loading {
+  color: #888;
+  font-size: 1.2rem;
+  text-align: center;
 }
 
 .loading,
@@ -116,8 +217,24 @@
     font-size: 1.5rem;
   }
 
-  .line-chart-container {
+  .chart-section {
     padding: 1rem;
+  }
+
+  .timeframe-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .timeframe-display {
+    width: 100%;
+    text-align: center;
+    margin-right: 0;
+  }
+
+  .line-chart-container {
+    height: 350px;
   }
 
   .word-cloud-section {

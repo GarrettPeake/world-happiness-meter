@@ -1,4 +1,4 @@
-import { updateMeters, getHistoricalMeters } from "./sentiment-meter";
+import { updateMeters, getHistoricalMeters, getAggregatedMeters } from "./sentiment-meter";
 
 interface Env {
   SENTIMENT_DATA: KVNamespace;
@@ -43,7 +43,56 @@ export default {
     const route = new URL(request.url).pathname;
     try {
       if (route.startsWith("/api/meters")) {
-        // Calculate time range for past 24 hours
+        const url = new URL(request.url);
+        const startParam = url.searchParams.get("start");
+        const endParam = url.searchParams.get("end");
+
+        // If start and end are provided, return aggregated data for that range
+        if (startParam && endParam) {
+          const start = new Date(startParam);
+          const end = new Date(endParam);
+
+          if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return new Response(
+              JSON.stringify({ error: "Invalid date format" }),
+              {
+                status: 400,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+              }
+            );
+          }
+
+          const aggregatedData = await getAggregatedMeters(
+            env.SENTIMENT_DATA,
+            start,
+            end
+          );
+
+          if (!aggregatedData) {
+            return new Response(
+              JSON.stringify({ error: "No data found for time range" }),
+              {
+                status: 404,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+              }
+            );
+          }
+
+          return new Response(JSON.stringify(aggregatedData, null, 2), {
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        }
+
+        // Default: Calculate time range for past 24 hours
         const end = new Date();
         const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
 
