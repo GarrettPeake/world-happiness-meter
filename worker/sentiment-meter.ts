@@ -149,12 +149,14 @@ export function generateHourPrefixes(start: Date, end: Date): string[] {
 export async function getHistoricalMeters(
   kv: KVNamespace,
   start: Date,
-  end: Date
+  end: Date,
+  includeTopConcepts = false
 ): Promise<SentimentData[]> {
   const startIso = start.toISOString();
   const endIso = end.toISOString();
   const prefixes = generateHourPrefixes(start, end);
   const results: SentimentData[] = [];
+  const keysToFetch: string[] = [];
 
   for (const prefix of prefixes) {
     let cursor: string | undefined = undefined;
@@ -174,11 +176,27 @@ export async function getHistoricalMeters(
             ...key.metadata,
             timestamp: key.name,
           } as SentimentData);
+          if (includeTopConcepts) {
+            keysToFetch.push(key.name);
+          }
         }
       }
       hasMore = !listResult.list_complete;
       if (!listResult.list_complete) {
         cursor = listResult.cursor;
+      }
+    }
+  }
+
+  // Fetch topConcepts for each key if requested
+  if (includeTopConcepts && keysToFetch.length > 0) {
+    const conceptPromises = keysToFetch.map((key) => kv.get(key));
+    const conceptResults = await Promise.all(conceptPromises);
+
+    for (let i = 0; i < results.length; i++) {
+      const conceptJson = conceptResults[i];
+      if (conceptJson) {
+        results[i].topConcepts = JSON.parse(conceptJson);
       }
     }
   }
@@ -271,6 +289,7 @@ export async function getAggregatedMeters(
   start: Date,
   end: Date
 ): Promise<SentimentData | null> {
-  const dataPoints = await getHistoricalMeters(kv, start, end);
+  // Include topConcepts so they can be aggregated
+  const dataPoints = await getHistoricalMeters(kv, start, end, true);
   return aggregateSentimentData(dataPoints, start, end);
 }
