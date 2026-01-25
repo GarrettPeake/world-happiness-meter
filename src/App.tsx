@@ -450,7 +450,7 @@ function App() {
           />
         </a>
         <p className="footer-text">
-          Samples 2000 posts from the BlueSky Firehose every 5 minutes and uses
+          Samples 1000 posts from the BlueSky Firehose every 5 minutes and uses
           an LLM to perform sentiment analysis and topic extraction, these are
           the results! (Click on a word to search it, sometimes topics are
           NSFW!). Made with ❤️ by Garrett Peake

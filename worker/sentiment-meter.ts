@@ -22,7 +22,7 @@ export async function updateMeters(
   const collectedPosts: FirehosePost[] = [];
 
   await connectToFirehose({
-    eventLimit: 2000, // Workers can only do 1000 sub requests and the websocket itself uses some
+    eventLimit: 1000, // Workers can only do 1000 sub requests and the websocket itself uses some
     onPost: async (post: FirehosePost) => {
       collectedPosts.push(post);
     },

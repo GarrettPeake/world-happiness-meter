@@ -10,7 +10,7 @@ export type SentimentResult =
     }
   | { error: string | null };
 
-const DEFAULT_SYSTEM_PROMPT = `You are a professional sentiment analyzer. When provided with a message, you will determine sentiment scores and 1-3 key concepts from the message. You will respond in exactly this format:
+const DEFAULT_SYSTEM_PROMPT = `You are a professional sentiment analyzer. When provided with a message, you will determine sentiment scores and 0-2 key concepts from the message. You will respond in exactly this format:
 \`\`\`
 happiness:7
 sadness:1
@@ -18,18 +18,11 @@ anger:0
 fear:3
 surprise:5
 disgust:4
-concepts:peace,ukraine war
+concepts:ukraine war,ukraine ceasefire
 \`\`\`
-Your response -- including concepts -- must:
- 1. Be in english, regardless of message language.
- 2. Match the formatting in the example including spacing and colons.
- 3. Not contain any other text.
- 4. Must contain only the scores 0, 1, 2, 3, 4, 5, 6, 7, 8, or 9
-
- If the sentiment of the message is unclear, such as a wordle score, a stock price update, an airplane tracker, an advertisement, a link, etc. your response must be simply:
-\`\`\`
-NO SENTIMENT
-\`\`\``;
+You must respond in english, match the exact formatting in the example with no extra content, and score using whole numbers 0-9 (inclusive).
+The concepts included must be concrete "newsworthy topics" such as a specific war, event, person, government action, etc. Not love, peace, friendship, hate, etc.
+If the sentiment of the message is unclear, such as a wordle score, a stock price update, an advertisement, a link, etc. your response must be \`\`\`NO SENTIMENT\`\`\``;
 
 export async function analyzeSentiment(
   text: string,
@@ -84,7 +77,7 @@ function parseSentimentResponse(content: string): SentimentResult {
     const fearMatch = content.match(/fear:\s*([\d.]+)/);
     const surpriseMatch = content.match(/surprise:\s*([\d.]+)/);
     const disgustMatch = content.match(/disgust:\s*([\d.]+)/);
-    const conceptsMatch = content.match(/concepts:\s*(.+)/);
+    const conceptsMatch = content.match(/concepts:\s*(.*)/);
 
     if (
       !happinessMatch ||
@@ -101,8 +94,12 @@ function parseSentimentResponse(content: string): SentimentResult {
     const concepts = conceptsMatch[1]
       .trim()
       .split(",")
-      .map((c) => c.trim())
-      .filter((c) => c.length > 0);
+      .map((c) => c.trim().toLowerCase())
+      .filter(
+        (c) =>
+          c !== "none" && c !== "unknown" && c !== "n/a" && c !== "na" && c !== "0" && c !== "nil" && c !== "none```"
+      )
+      .filter((c) => c.length > 1);
 
     return {
       happiness: parseFloat(happinessMatch[1]),
