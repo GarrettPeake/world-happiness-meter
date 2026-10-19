@@ -10,7 +10,7 @@
   },
   "routes": [
     {
-      "pattern": "happiness.gpeake.com",
+      "pattern": "sentiment.gpeake.com",
       "custom_domain": true
     }
   ],
