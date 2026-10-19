@@ -41,7 +41,7 @@ export const RATE_LIMITED = "RATE LIMITED";
 const CONCEPT_MODEL = "deepseek/deepseek-v4.1-flash";
 export const CONCEPT_BATCH_SIZE = 50;
 
-const DEFAULT_CONCEPT_PROMPT = `Each input line is "<n>:<post>". For posts about a concrete newsworthy topic (a specific war, event, person, government action, etc. Not love, peace, friendship, hate, etc.), output up to 2 topics per post as "<n>:<topic>". Topics must be 1-3 english words, translated if needed, and broad enough to recur across many posts (e.g. "gaza" not "mohammad injured in gaza"). Skip posts without one or if unsure.`;
+const DEFAULT_CONCEPT_PROMPT = `Each input line is "<n>:<post>". For posts about a concrete newsworthy topic (a specific war, event, person, government action, etc. Not love, peace, friendship, hate, etc.), output up to 2 topics per post as "<n>:<topic>". Topics must be 1-3 english words, translated if needed, and broad enough to recur across many posts (e.g. "gaza" not "mohammad injured in gaza"). If a post has no clear topic, output nothing for it, never a placeholder like "no topic" or "none". If no post has one, return an empty list.`;
 
 export async function analyzeSentiment(
   text: string,
