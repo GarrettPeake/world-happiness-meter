@@ -36,7 +36,7 @@ npm run validate <file>  # Test sentiment analysis on a corpus file
 The worker is configured to run as a **scheduled cron job every 10 minutes** (see `wrangler.jsonc`). On each execution:
 
 1. **firehose-client.ts**: Connects to Bluesky Jetstream firehose (`@skyware/jetstream`) and streams live posts for 1 minute
-2. **sentiment-analyzer.ts**: Each post is sent to OpenRouter API (using `meta-llama/llama-3.1-8b-instruct`) which returns sentiment scores (happiness, sadness, anger, fear, surprise, disgust) and key concepts
+2. **sentiment-analyzer.ts**: Each non-empty post is sent to OpenRouter's Decisions API (`perplexity/pplx-decider-flash-v1.2`) as one terse yes/no (`noul`) question per emotion (happiness, sadness, anger, fear, surprise, disgust); each emotion score is the probability of "true" × 10. Concepts are extracted separately by `deepseek/deepseek-v4.1-flash` in batches of 50 posts
 3. **sentiment-meter.ts**: Aggregates sentiment scores, calculates averages, and identifies top 200 concepts from the batch
 4. **index.ts**: Stores aggregated data in Cloudflare KV with ISO timestamp as key and full data in metadata
 
@@ -57,7 +57,7 @@ Standard React + Vite SPA that:
 Development utilities that reuse worker code:
 - **sentimize**: Live test of the sentiment pipeline - runs for 1 minute and displays results
 - **corpus**: Collects sample posts to JSON files for testing
-- **validate**: Batch tests sentiment analysis on collected corpus files, useful for prompt engineering
+- **validate**: Batch tests sentiment analysis on collected corpus files and prints per-post concepts; an optional extra argument overrides the concept prompt
 
 ## Environment Setup
 
@@ -73,7 +73,7 @@ The worker expects `OPENROUTER_API_KEY` as a Cloudflare secret (not in wrangler.
 **SentimentData** (stored in KV):
 - timestamp: ISO8601 string
 - messageCount: number of posts analyzed
-- happinessAvg/sadnessAvg/angerAvg/fearAvg/surpriseAvg/disgustAvg: average scores 0-9
+- happinessAvg/sadnessAvg/angerAvg/fearAvg/surpriseAvg/disgustAvg: average scores 0-10 (0-9 for data before the Decider migration)
 - topConcepts: object mapping concept names to frequency counts (top 200)
 
 **KV Storage Pattern**:
@@ -88,20 +88,11 @@ Three tsconfig files for different compilation targets:
 - `tsconfig.worker.json`: Cloudflare Worker code
 - `tsconfig.node.json`: Build tools and scripts
 
-## Sentiment Analysis Prompt
+## Sentiment Analysis
 
-The sentiment analyzer uses a strict prompt format (see `DEFAULT_SYSTEM_PROMPT` in `worker/sentiment-analyzer.ts`). The LLM must return exactly:
-```
-happiness:7
-sadness:1
-anger:0
-fear:3
-surprise:5
-disgust:4
-concepts:peace,ukraine war
-```
-
-Or `NO SENTIMENT` for posts without clear sentiment. This format is critical for parsing - any changes to the prompt must maintain this structure.
+- **Emotions** (`SENTIMENT_QUESTIONS`): Decider returns `answers.<name>.noul`, the probability (0-1) that the question is true. If all six are < 0.5 the post is `{ error: "NO SENTIMENT" }`. Empty (image-only) posts are skipped before any call: the terse questions score empty input ~0.9 on every emotion.
+- **Rate limits**: a 429 returns `{ error: RATE_LIMITED }`; `updateMeters` retries those once within the remaining subrequest budget (`SUBREQUEST_BUDGET`).
+- **Concepts** (`DEFAULT_CONCEPT_PROMPT`): posts are sent as `<n>:<post>` lines; the model returns strict JSON `{"t":["<n>:<topic>", ...]}`. Keep this schema minimal; it exists to minimize input/output tokens. Requests use `provider.sort: "price"` because provider prices for this model vary by >20x.
 
 ## Cloudflare-Specific Notes
 

@@ -1,5 +1,13 @@
 import { connectToFirehose, type FirehosePost } from "./firehose-client";
-import { analyzeSentiment } from "./sentiment-analyzer";
+import {
+  analyzeSentiment,
+  extractConcepts,
+  CONCEPT_BATCH_SIZE,
+  RATE_LIMITED,
+} from "./sentiment-analyzer";
+
+// Workers allow 1000 subrequests per invocation; the websocket uses some
+const SUBREQUEST_BUDGET = 990;
 
 export interface SentimentData {
   timestamp: string; // ISO8601 format
@@ -22,7 +30,7 @@ export async function updateMeters(
   const collectedPosts: FirehosePost[] = [];
 
   await connectToFirehose({
-    eventLimit: 1000, // Workers can only do 1000 sub requests and the websocket itself uses some
+    eventLimit: 975, // Workers can only do 1000 sub requests; the websocket and concept batches use some
     onPost: async (post: FirehosePost) => {
       collectedPosts.push(post);
     },
@@ -32,6 +40,9 @@ export async function updateMeters(
   });
 
   console.log(`Collected ${collectedPosts.length} posts from firehose`);
+
+  // Image-only posts have no text to analyze
+  const posts = collectedPosts.filter((post) => post.text.trim());
 
   // Phase 2: Analysis - process all posts in parallel
   let messageCount = 0;
@@ -48,12 +59,38 @@ export async function updateMeters(
   const conceptCounts: { [concept: string]: number } = {};
 
   // Process all posts in parallel
-  const results = await Promise.all(
-    collectedPosts.map((post) => analyzeSentiment(post.text, apiKey))
-  );
+  const [results, postConcepts] = await Promise.all([
+    Promise.all(posts.map((post) => analyzeSentiment(post.text, apiKey))),
+    extractConcepts(
+      posts.map((post) => post.text),
+      apiKey
+    ),
+  ]);
+
+  // Retry rate limited posts once, within the remaining subrequest budget
+  const rateLimited = results
+    .map((result, i) =>
+      "error" in result && result.error === RATE_LIMITED ? i : -1
+    )
+    .filter((i) => i >= 0);
+  const retryBudget =
+    SUBREQUEST_BUDGET -
+    posts.length -
+    Math.ceil(posts.length / CONCEPT_BATCH_SIZE);
+  const retries = rateLimited.slice(0, Math.max(0, retryBudget));
+  if (rateLimited.length > 0) {
+    console.log(
+      `${rateLimited.length} posts rate limited, retrying ${retries.length}`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const retried = await Promise.all(
+      retries.map((i) => analyzeSentiment(posts[i].text, apiKey))
+    );
+    retries.forEach((postIndex, j) => (results[postIndex] = retried[j]));
+  }
 
   // Aggregate results
-  for (const result of results) {
+  for (const [i, result] of results.entries()) {
     if (!("error" in result)) {
       messageCount++;
 
@@ -66,7 +103,7 @@ export async function updateMeters(
       sentimentSums.disgust += result.disgust;
 
       // Count concepts
-      for (const concept of result.concepts) {
+      for (const concept of postConcepts[i]) {
         const lowerConcept = concept.toLowerCase();
         conceptCounts[lowerConcept] = (conceptCounts[lowerConcept] || 0) + 1;
       }
