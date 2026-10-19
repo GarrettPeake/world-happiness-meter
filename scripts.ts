@@ -3,7 +3,8 @@ import * as dotenv from "dotenv";
 import { connectToFirehose, FirehosePost } from "./worker/firehose-client";
 import {
   analyzeSentiment,
-  DEFAULT_SYSTEM_PROMPT,
+  extractConcepts,
+  DEFAULT_CONCEPT_PROMPT,
 } from "./worker/sentiment-analyzer";
 
 // Load environment variables
@@ -60,7 +61,10 @@ async function sentimize() {
         }`
       );
 
-      const result = await analyzeSentiment(post.text, apiKey);
+      const [result, [concepts]] = await Promise.all([
+        analyzeSentiment(post.text, apiKey),
+        extractConcepts([post.text], apiKey),
+      ]);
 
       if (!("error" in result)) {
         messageCount++;
@@ -74,7 +78,7 @@ async function sentimize() {
             1
           )} D:${result.disgust.toFixed(1)}`
         );
-        console.log(`Concepts: ${result.concepts.join(", ")}`);
+        console.log(`Concepts: ${concepts.join(", ")}`);
 
         // Add to sums
         sentimentSums.happiness += result.happiness;
@@ -85,9 +89,8 @@ async function sentimize() {
         sentimentSums.disgust += result.disgust;
 
         // Count concepts
-        for (const concept of result.concepts) {
-          const lowerConcept = concept.toLowerCase();
-          conceptCounts[lowerConcept] = (conceptCounts[lowerConcept] || 0) + 1;
+        for (const concept of concepts) {
+          conceptCounts[concept] = (conceptCounts[concept] || 0) + 1;
         }
       } else {
         console.log(result.error);
@@ -183,7 +186,7 @@ async function validate() {
   const filename = process.argv[3];
   if (!filename) {
     console.error("Usage: npm run validate <corpus-file.json>");
-    console.error("Optional: Add custom prompt as additional argument");
+    console.error("Optional: Add custom concept prompt as additional argument");
     return;
   }
 
@@ -195,7 +198,7 @@ async function validate() {
 
   // Load custom prompt if provided
   const customPrompt = process.argv[4];
-  const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
+  const systemPrompt = customPrompt || DEFAULT_CONCEPT_PROMPT;
 
   if (customPrompt) {
     console.log("Using custom prompt:");
@@ -224,41 +227,49 @@ async function validate() {
   };
   const conceptCounts: ConceptCounts = {};
 
-  await Promise.all(
-    corpus.map(async (entry) => {
-      return await analyzeSentiment(entry.text, apiKey, systemPrompt).then(
-        (result) => {
-          if (!("error" in result)) {
-            processed++;
+  const [results, postConcepts] = await Promise.all([
+    Promise.all(corpus.map((entry) => analyzeSentiment(entry.text, apiKey))),
+    extractConcepts(
+      corpus.map((entry) => entry.text),
+      apiKey,
+      systemPrompt
+    ),
+  ]);
 
-            // Add to sums
-            sentimentSums.happiness += result.happiness;
-            sentimentSums.sadness += result.sadness;
-            sentimentSums.anger += result.anger;
-            sentimentSums.fear += result.fear;
-            sentimentSums.surprise += result.surprise;
-            sentimentSums.disgust += result.disgust;
+  let withSentiment = 0;
+  for (const [i, result] of results.entries()) {
+    const entry = corpus[i];
+    const preview = entry.text.trim().replaceAll("\n", "\\ ").substring(0, 200);
 
-            // Count concepts
-            for (const concept of result.concepts) {
-              const lowerConcept = concept.toLowerCase();
-              conceptCounts[lowerConcept] =
-                (conceptCounts[lowerConcept] || 0) + 1;
-            }
-          } else {
-            if (result.error === "NO SENTIMENT") {
-              processed++;
-            }
-            console.log(
-              `\n${result.error} -> [${processed + 1}/${
-                corpus.length
-              }] ${entry.text.trim().replaceAll("\n", "\\ ").substring(0, 200)}`
-            );
-          }
-        }
+    if (!("error" in result)) {
+      processed++;
+      withSentiment++;
+
+      // Add to sums
+      sentimentSums.happiness += result.happiness;
+      sentimentSums.sadness += result.sadness;
+      sentimentSums.anger += result.anger;
+      sentimentSums.fear += result.fear;
+      sentimentSums.surprise += result.surprise;
+      sentimentSums.disgust += result.disgust;
+
+      // Count concepts
+      for (const concept of postConcepts[i]) {
+        conceptCounts[concept] = (conceptCounts[concept] || 0) + 1;
+      }
+    } else {
+      if (result.error === "NO SENTIMENT") {
+        processed++;
+      }
+      console.log(
+        `\n${result.error} -> [${i + 1}/${corpus.length}] ${preview}`
       );
-    })
-  );
+    }
+
+    if (postConcepts[i].length > 0) {
+      console.log(`\n[${postConcepts[i].join(", ")}] <- ${preview}`);
+    }
+  }
 
   // Display results
   console.log("\n============================================");
@@ -268,13 +279,19 @@ async function validate() {
   console.log(`Successfully processed: ${processed}/${corpus.length}`);
   console.log("\nAverage Sentiment Scores:");
   console.log(
-    `  Happiness: ${(sentimentSums.happiness / processed).toFixed(2)}`
+    `  Happiness: ${(sentimentSums.happiness / withSentiment).toFixed(2)}`
   );
-  console.log(`  Sadness: ${(sentimentSums.sadness / processed).toFixed(2)}`);
-  console.log(`  Anger: ${(sentimentSums.anger / processed).toFixed(2)}`);
-  console.log(`  Fear: ${(sentimentSums.fear / processed).toFixed(2)}`);
-  console.log(`  Surprise: ${(sentimentSums.surprise / processed).toFixed(2)}`);
-  console.log(`  Disgust: ${(sentimentSums.disgust / processed).toFixed(2)}`);
+  console.log(
+    `  Sadness: ${(sentimentSums.sadness / withSentiment).toFixed(2)}`
+  );
+  console.log(`  Anger: ${(sentimentSums.anger / withSentiment).toFixed(2)}`);
+  console.log(`  Fear: ${(sentimentSums.fear / withSentiment).toFixed(2)}`);
+  console.log(
+    `  Surprise: ${(sentimentSums.surprise / withSentiment).toFixed(2)}`
+  );
+  console.log(
+    `  Disgust: ${(sentimentSums.disgust / withSentiment).toFixed(2)}`
+  );
 
   const sortedConcepts = Object.entries(conceptCounts)
     .sort((a, b) => b[1] - a[1])
